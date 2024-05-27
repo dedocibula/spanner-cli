@@ -30,7 +30,6 @@ import (
 
 	"cloud.google.com/go/civil"
 	"cloud.google.com/go/spanner"
-	pb "cloud.google.com/go/spanner/apiv1/spannerpb"
 	sppb "cloud.google.com/go/spanner/apiv1/spannerpb"
 	"cloud.google.com/go/spanner/spansql"
 	"github.com/google/go-cmp/cmp"
@@ -331,7 +330,7 @@ func TestCopyE2E(t *testing.T) {
 		t.Fatalf("failed to dial: %v", err)
 	}
 
-	session, err := NewSession("project", "instance", "database", pb.RequestOptions_PRIORITY_UNSPECIFIED, "role", nil, option.WithGRPCConn(conn))
+	session, err := NewSession("project", "instance", "database", sppb.RequestOptions_PRIORITY_UNSPECIFIED, "role", nil, option.WithGRPCConn(conn))
 	if err != nil {
 		t.Fatalf("failed to create spanner-cli session: %v", err)
 	}
