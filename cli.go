@@ -429,9 +429,23 @@ func resultLine(result *Result, verbose bool) string {
 			if result.CommitStats != nil {
 				detail += fmt.Sprintf("mutation_count: %d\n", result.CommitStats.GetMutationCount())
 			}
+			if result.CopyStats != nil {
+				detail += fmt.Sprintf("batch size:     %d\nworker count:   %d\n", result.CopyStats.MutationBatchSize, result.CopyStats.WorkerCount)
+			}
 		}
 		return fmt.Sprintf("Query OK, %s%d rows affected (%s)\n%s",
 			affectedRowsPrefix, result.AffectedRows, result.Stats.ElapsedTime, detail)
+	}
+
+	if result.IsCopy {
+		var detail string
+		if verbose {
+			if result.CopyStats != nil {
+				detail += fmt.Sprintf("batch size:     %d\nworker count:   %d\n", result.CopyStats.MutationBatchSize, result.CopyStats.WorkerCount)
+			}
+		}
+		return fmt.Sprintf("Copy OK, %d rows affected (%s)\n%s",
+			result.AffectedRows, result.Stats.ElapsedTime, detail)
 	}
 
 	var set string

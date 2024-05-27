@@ -61,6 +61,8 @@ type Result struct {
 	Timestamp        time.Time
 	ForceVerbose     bool
 	CommitStats      *pb.CommitResponse_CommitStats
+	IsCopy           bool
+	CopyStats        *CopyStats
 }
 
 type Row struct {
@@ -120,6 +122,7 @@ var (
 	showColumnsRe     = regexp.MustCompile(`(?is)^(?:SHOW\s+COLUMNS\s+FROM)\s+(.+)$`)
 	showIndexRe       = regexp.MustCompile(`(?is)^SHOW\s+(?:INDEX|INDEXES|KEYS)\s+FROM\s+(.+)$`)
 	explainRe         = regexp.MustCompile(`(?is)^(?:EXPLAIN|DESC(?:RIBE)?)\s+(ANALYZE\s+)?(.+)$`)
+	copyRe            = regexp.MustCompile(`(?is)^COPY\s+(.+)\s+FROM\s+(.+?)(?:\s+(HEADER)?)?$`)
 )
 
 var (
@@ -204,6 +207,12 @@ func BuildStatementWithComments(stripped, raw string) (Statement, error) {
 		return &RollbackStatement{}, nil
 	case closeRe.MatchString(stripped):
 		return &CloseStatement{}, nil
+	case copyRe.MatchString(stripped):
+		matched := copyRe.FindStringSubmatch(stripped)
+		return &CopyStatement{
+			Table:    unquoteIdentifier(matched[1]),
+			FilePath: strings.TrimSpace(matched[2]),
+			Header:   len(matched) == 4 && strings.ToLower(matched[3]) == "header"}, nil
 	}
 
 	return nil, errors.New("invalid statement")
@@ -1119,4 +1128,64 @@ func parsePriority(priority string) (pb.RequestOptions_Priority, error) {
 	default:
 		return pb.RequestOptions_PRIORITY_UNSPECIFIED, fmt.Errorf("invalid priority: %q", priority)
 	}
+}
+
+type CopyStatement struct {
+	Table    string
+	FilePath string
+	Header   bool
+}
+
+func (c *CopyStatement) Execute(ctx context.Context, session *Session) (*Result, error) {
+	columnsStatement := &ShowColumnsStatement{Table: c.Table}
+	res, err := columnsStatement.Execute(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+
+	columns := make([]Column, res.AffectedRows)
+	for i, row := range res.Rows {
+		columns[i].Name = row.Columns[0]
+		typeCode, array := toTypeCode(row.Columns[1])
+		columns[i].Type = typeCode
+		columns[i].Array = array
+		columns[i].Nullable = strings.ToLower(row.Columns[2]) == "yes"
+	}
+
+	copier := NewCopier(c.Table, columns, c.FilePath, c.Header)
+	stats, err := copier.Copy(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Result{IsCopy: true, AffectedRows: stats.Rows, CopyStats: stats}, nil
+}
+
+var (
+	typeCodeMap = map[string]pb.TypeCode{
+		"bool":      pb.TypeCode_BOOL,
+		"int64":     pb.TypeCode_INT64,
+		"float64":   pb.TypeCode_FLOAT64,
+		"timestamp": pb.TypeCode_TIMESTAMP,
+		"date":      pb.TypeCode_DATE,
+		"string":    pb.TypeCode_STRING,
+		"bytes":     pb.TypeCode_BYTES,
+		"array":     pb.TypeCode_ARRAY,
+		"numeric":   pb.TypeCode_NUMERIC,
+		"json":      pb.TypeCode_JSON,
+	}
+)
+
+func toTypeCode(typeStr string) (pb.TypeCode, bool) {
+	// TODO handle PG
+	typeStr = strings.ToLower(typeStr)
+	array := false
+	if index := strings.Index(typeStr, "<"); index != -1 {
+		typeStr = typeStr[index+1 : strings.Index(typeStr, ">")]
+		array = true
+	}
+	if index := strings.Index(typeStr, "("); index != -1 {
+		typeStr = typeStr[:index]
+	}
+	return typeCodeMap[typeStr], array
 }

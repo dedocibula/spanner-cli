@@ -507,6 +507,16 @@ func TestBuildStatement(t *testing.T) {
 			input: "DESC SELECT * FROM t1",
 			want:  &ExplainStatement{Explain: "SELECT * FROM t1"},
 		},
+		{
+			desc:  "COPY statement",
+			input: "COPY t1 FROM /tmp/file.csv",
+			want:  &CopyStatement{Table: "t1", FilePath: "/tmp/file.csv", Header: false},
+		},
+		{
+			desc:  "COPY statement HEADER",
+			input: "COPY t1 FROM /tmp/file.csv HEADER",
+			want:  &CopyStatement{Table: "t1", FilePath: "/tmp/file.csv", Header: true},
+		},
 	} {
 		t.Run(test.desc, func(t *testing.T) {
 			got, err := BuildStatement(test.input)
@@ -598,6 +608,82 @@ func TestIsCreateTableDDL(t *testing.T) {
 		t.Run(tt.desc, func(t *testing.T) {
 			if got := isCreateTableDDL(tt.ddl, tt.table); got != tt.want {
 				t.Errorf("isCreateTableDDL(%q, %q) = %v, but want %v", tt.ddl, tt.table, got, tt.want)
+			}
+		})
+	}
+}
+
+func Test(t *testing.T) {
+	for _, tt := range []struct {
+		desc    string
+		typeStr string
+		want    pb.TypeCode
+		array   bool
+	}{
+		{
+			desc:    "int64",
+			typeStr: "INT64",
+			want:    pb.TypeCode_INT64,
+			array:   false,
+		},
+		{
+			desc:    "bytes",
+			typeStr: "BYTES(MAX)",
+			want:    pb.TypeCode_BYTES,
+			array:   false,
+		},
+		{
+			desc:    "bool",
+			typeStr: "BOOL",
+			want:    pb.TypeCode_BOOL,
+			array:   false,
+		},
+		{
+			desc:    "float64",
+			typeStr: "FLOAT64",
+			want:    pb.TypeCode_FLOAT64,
+			array:   false,
+		},
+		{
+			desc:    "string",
+			typeStr: "STRING(MAX)",
+			want:    pb.TypeCode_STRING,
+			array:   false,
+		},
+		{
+			desc:    "numeric",
+			typeStr: "NUMERIC",
+			want:    pb.TypeCode_NUMERIC,
+			array:   false,
+		},
+		{
+			desc:    "timestamp",
+			typeStr: "TIMESTAMP",
+			want:    pb.TypeCode_TIMESTAMP,
+			array:   false,
+		},
+		{
+			desc:    "date",
+			typeStr: "DATE",
+			want:    pb.TypeCode_DATE,
+			array:   false,
+		},
+		{
+			desc:    "json",
+			typeStr: "JSON",
+			want:    pb.TypeCode_JSON,
+			array:   false,
+		},
+		{
+			desc:    "array",
+			typeStr: "ARRAY<STRING(MAX)>",
+			want:    pb.TypeCode_STRING,
+			array:   true,
+		},
+	} {
+		t.Run(tt.desc, func(t *testing.T) {
+			if got, array := toTypeCode(tt.typeStr); got != tt.want || array != tt.array {
+				t.Errorf("toTypeCode(%s) = %v (array = %v), but want %v (array = %v)", tt.typeStr, got, array, tt.want, tt.array)
 			}
 		})
 	}
